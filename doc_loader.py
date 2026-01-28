@@ -31,6 +31,11 @@ from langchain_text_splitters import (
     RecursiveCharacterTextSplitter
 )
 
+# GraphRAG - 图增强检索
+from langchain_graph_retriever import GraphRetriever
+from graph_retriever.strategies import Eager
+from langchain_graph_retriever.transformers import ShreddingTransformer
+
 
 class DocLoader:
     """
@@ -166,6 +171,9 @@ class DocLoader:
         """
         创建向量存储
         
+        使用 ShreddingTransformer 扁平化 metadata，
+        确保与 GraphRAG 兼容（ChromaDB 不支持嵌套 metadata）。
+        
         Args:
             documents: 文档列表
             
@@ -174,8 +182,14 @@ class DocLoader:
         """
         print("正在创建向量存储...")
         
+        # 使用 ShreddingTransformer 扁平化 metadata
+        # ChromaDB 不支持嵌套 metadata，这是 GraphRAG 的要求
+        shredder = ShreddingTransformer()
+        processed_docs = list(shredder.transform_documents(documents))
+        print(f"[信息] 已使用 ShreddingTransformer 处理 {len(processed_docs)} 个文档")
+        
         self.vector_store = Chroma.from_documents(
-            documents=documents,
+            documents=processed_docs,
             embedding=self.embeddings,
             persist_directory=self.persist_directory,
             collection_name="pacvue_docs"
@@ -233,7 +247,7 @@ class DocLoader:
     
     def search(self, query: str, k: int = 1) -> List[Document]:
         """
-        搜索相关文档
+        搜索相关文档（纯向量搜索）
         
         Args:
             query: 搜索查询
@@ -247,6 +261,113 @@ class DocLoader:
         
         results = self.vector_store.similarity_search(query, k=k)
         return results
+    
+    def create_graph_retriever(
+        self,
+        k: int = 5,
+        start_k: int = 1,
+        max_depth: int = 2
+    ) -> GraphRetriever:
+        """
+        创建 GraphRAG 检索器
+        
+        GraphRAG 通过文档的 metadata 属性建立图关系，
+        在向量搜索的基础上进行图遍历，找到更相关的文档。
+        
+        Args:
+            k: 返回结果数量
+            start_k: 初始向量搜索返回的文档数
+            max_depth: 图遍历的最大深度
+            
+        Returns:
+            GraphRetriever 实例
+        """
+        if self.vector_store is None:
+            self.get_or_create_vector_store()
+        
+        # 定义图边关系：基于 metadata 属性建立文档间的连接
+        # - ("source", "source"): 相同来源的文档片段
+        # - ("filename", "filename"): 相同文件名的片段（本地文档）
+        # - ("title", "title"): 相同标题的片段（Confluence 文档）
+        edges = [
+            ("source", "source"),
+            ("filename", "filename"),
+            ("title", "title"),
+        ]
+        
+        # 使用 Eager 策略进行图遍历
+        strategy = Eager(k=k, start_k=start_k, max_depth=max_depth)
+        
+        retriever = GraphRetriever(
+            store=self.vector_store,
+            edges=edges,
+            strategy=strategy,
+        )
+        
+        return retriever
+    
+    def graph_search(self, query: str, k: int = 5) -> List[Document]:
+        """
+        使用 GraphRAG 进行图遍历搜索
+        
+        Args:
+            query: 搜索查询
+            k: 返回结果数量
+            
+        Returns:
+            相关文档列表
+        """
+        retriever = self.create_graph_retriever(k=k)
+        results = retriever.invoke(query)
+        return results
+    
+    def hybrid_search(self, query: str, k: int = 5) -> List[Document]:
+        """
+        混合搜索：结合向量搜索和 GraphRAG 图遍历
+        
+        同时执行向量搜索和图遍历搜索，合并并去重结果，
+        以获得更全面和相关的文档。
+        
+        Args:
+            query: 搜索查询
+            k: 返回结果数量
+            
+        Returns:
+            去重后的相关文档列表
+        """
+        if self.vector_store is None:
+            self.get_or_create_vector_store()
+        
+        # 执行向量搜索
+        vector_results = self.search(query, k=k)
+        
+        # 执行图遍历搜索
+        try:
+            graph_results = self.graph_search(query, k=k)
+        except Exception as e:
+            print(f"[警告] GraphRAG 搜索失败，回退到向量搜索: {e}")
+            return vector_results
+        
+        # 合并结果并去重（基于文档内容的哈希值）
+        seen_hashes: Set[str] = set()
+        merged_results: List[Document] = []
+        
+        # 先添加向量搜索结果（优先级更高）
+        for doc in vector_results:
+            content_hash = hashlib.sha1(doc.page_content.encode()).hexdigest()
+            if content_hash not in seen_hashes:
+                seen_hashes.add(content_hash)
+                merged_results.append(doc)
+        
+        # 再添加图遍历结果
+        for doc in graph_results:
+            content_hash = hashlib.sha1(doc.page_content.encode()).hexdigest()
+            if content_hash not in seen_hashes:
+                seen_hashes.add(content_hash)
+                merged_results.append(doc)
+        
+        # 返回前 k 个结果
+        return merged_results[:k]
     
     def list_documents(self) -> List[str]:
         """
@@ -282,6 +403,8 @@ class DocLoader:
         """
         添加文档片段到向量存储
         
+        使用 ShreddingTransformer 扁平化 metadata（GraphRAG 要求）。
+        
         Args:
             chunks: Document 片段列表
             ids: 每个片段对应的唯一 ID 列表
@@ -289,18 +412,23 @@ class DocLoader:
         if self.vector_store is None:
             self.get_or_create_vector_store()
         
+        # 使用 ShreddingTransformer 扁平化 metadata
+        shredder = ShreddingTransformer()
+        processed_chunks = list(shredder.transform_documents(chunks))
+        
         # 添加到向量存储
-        self.vector_store.add_documents(chunks, ids=ids)
-        print(f"[OK] 已添加 {len(chunks)} 个文档片段")
+        self.vector_store.add_documents(processed_chunks, ids=ids)
+        print(f"[OK] 已添加 {len(processed_chunks)} 个文档片段")
 
     def upsert_documents(self, chunks: List[Document], ids: List[str]) -> None:
         """
         更新或插入文档到向量存储（upsert）
         
         如果 ID 已存在则更新，否则插入新文档。
+        使用 ShreddingTransformer 扁平化 metadata（GraphRAG 要求）。
         
         Args:
-            chunks: Document 片段列表
+            chunks: Document 片段列表（已经过 ShreddingTransformer 处理）
             ids: 每个片段对应的唯一 ID 列表
         """
         if self.vector_store is None:
@@ -349,7 +477,8 @@ class DocLoader:
         """
         添加 Confluence 文档到向量存储
         
-        对文档进行分割后，使用 upsert 方式添加到向量存储。
+        对文档进行分割后，使用 ShreddingTransformer 扁平化 metadata，
+        然后使用 upsert 方式添加到向量存储。
         
         Args:
             docs: Confluence 文档列表
@@ -361,11 +490,16 @@ class DocLoader:
         # 分割文档
         chunks = self.split_documents(docs)
         
+        # 使用 ShreddingTransformer 扁平化 metadata（GraphRAG 要求）
+        shredder = ShreddingTransformer()
+        processed_chunks = list(shredder.transform_documents(chunks))
+        print(f"[信息] 已使用 ShreddingTransformer 处理 {len(processed_chunks)} 个 Confluence 文档片段")
+        
         # 生成稳定的 ID
-        ids = self._generate_confluence_ids(chunks)
+        ids = self._generate_confluence_ids(processed_chunks)
         
         # 使用 upsert 方式添加
-        self.upsert_documents(chunks, ids)
+        self.upsert_documents(processed_chunks, ids)
     
     @staticmethod
     def _generate_confluence_ids(chunks: List[Document]) -> List[str]:

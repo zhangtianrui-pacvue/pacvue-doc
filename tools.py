@@ -32,27 +32,49 @@ class SearchDocsInput(BaseModel):
     """文档搜索工具的输入模型"""
     query: str = Field(description="搜索查询内容，可以是问题或关键词（支持中英文）")
     num_results: int = Field(default=3, description="返回结果数量，默认为3")
+    search_mode: str = Field(
+        default="hybrid",
+        description="搜索模式：'vector'（纯向量搜索）、'graph'（图遍历搜索）、'hybrid'（混合搜索，默认）"
+    )
 
 
 @tool(args_schema=SearchDocsInput)
-def search_docs(query: str, num_results: int = 3) -> str:
-    """在 Pacvue 文档库中搜索相关内容
+def search_docs(query: str, num_results: int = 3, search_mode: str = "hybrid") -> str:
+    """在 Pacvue 文档库中搜索相关内容（支持 GraphRAG 增强搜索）
     
     根据用户的问题或关键词，在文档库中查找最相关的内容片段。
-    适用于回答关于组件方面的问题。
+    支持三种搜索模式：
+    - vector: 纯向量相似度搜索
+    - graph: 图遍历搜索（基于文档关系）
+    - hybrid: 混合搜索（默认，结合向量搜索和图遍历）
     
     Args:
         query: 搜索查询内容（支持中英文）
         num_results: 返回结果数量
+        search_mode: 搜索模式（vector/graph/hybrid）
         
     Returns:
         搜索结果的文本内容
     """
     try:
         loader = get_doc_loader(docs_dir=DOCS_DIR)
-        results = loader.search(query, k=num_results)
-        print("DEBUG search_docs:", "query=", query, "k=", num_results, "len(results)=", len(results))
-        for idx, doc in enumerate[Document](results):
+        
+        # 根据搜索模式选择不同的搜索方法
+        if search_mode == "vector":
+            # 纯向量搜索
+            results = loader.search(query, k=num_results)
+            mode_desc = "向量搜索"
+        elif search_mode == "graph":
+            # 图遍历搜索
+            results = loader.graph_search(query, k=num_results)
+            mode_desc = "图遍历搜索"
+        else:
+            # 混合搜索（默认）
+            results = loader.hybrid_search(query, k=num_results)
+            mode_desc = "混合搜索"
+        
+        print(f"DEBUG search_docs: query={query}, k={num_results}, mode={mode_desc}, len(results)={len(results)}")
+        for idx, doc in enumerate(results):
             if idx == 0:
                 print("DEBUG first doc type=", type(doc), "metadata=", getattr(doc, "metadata", None))
         
@@ -60,6 +82,7 @@ def search_docs(query: str, num_results: int = 3) -> str:
             return {
                 "results": [],
                 "citations": [],
+                "search_mode": mode_desc,
                 "message": "未找到相关文档内容。请尝试使用不同的关键词搜索。"
             }
         
@@ -92,7 +115,8 @@ def search_docs(query: str, num_results: int = 3) -> str:
 
         return {
             "results": structured_results,
-            "citations": citations
+            "citations": citations,
+            "search_mode": mode_desc
         }
         
     except Exception as e:
