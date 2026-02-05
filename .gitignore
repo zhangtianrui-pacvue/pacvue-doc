@@ -62,3 +62,4 @@ htmlcov/
 cookie.json
 
 docs/
+.cursor/
