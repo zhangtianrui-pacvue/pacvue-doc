@@ -35,6 +35,7 @@ pip install -r requirements.txt
 如需拉取 Confluence 文档，配置以下环境变量：
 
 - `CONFLUENCE_TOKEN` - Confluence API Token
+  > 获取地址：[https://id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens)
 - `CONFLUENCE_EMAIL` - Confluence 账户邮箱
 
 ## 使用方法
@@ -66,16 +67,6 @@ uvicorn index:app --reload
 
 > 将 `<你的项目路径>` 替换为本项目的实际路径，例如 `D:/projects/pacvue-doc`
 
-### 步骤 3：使用
-
-配置完成后，在 Cursor 中直接询问 Pacvue 相关问题：
-
-- "TablePro 组件怎么用？"
-- "登录流程是什么？"
-- "Pacvue 的表单校验规范"
-
-AI 助手会自动调用 `search_pacvue_docs` 工具搜索文档并返回结果。
-
 ## MCP 工具
 
 | 工具名称             | 描述                              |
@@ -98,3 +89,45 @@ online_docs_Ids = ["123456", "789012"]
 ```
 
 服务启动时自动从 Confluence 拉取。
+
+### 步骤 3：使用
+
+配置完成后，在 Cursor 中直接询问 Pacvue 相关问题：
+
+- "TablePro 组件怎么用？"
+- "登录流程是什么？"
+- "Pacvue 的表单校验规范"
+
+AI 助手会自动调用 `search_pacvue_docs` 工具搜索文档并返回结果。
+
+## cursor 配置skills(推荐)
+
+```
+---
+
+name: pacvue-front-end-doc
+description: 当用户询问 Pacvue 内部前端组件、规范或 Confluence 文档时使用。
+
+---
+
+# Pacvue Front-end Knowledge Assistant
+
+## When to use
+
+当用户的问题包含以下关键词或意图时：
+
+- "Pacvue"
+- "公司组件" / "业务组件"
+- "前端文档" / "Confluence"
+- 询问特定内部组件
+
+## Instructions
+
+你是一个专家级的前端助手，但你没有内置公司内部的私有文档数据。你需要通过调用内部搜索 API 来获取准确信息。
+当用户询问内部文档时，**必须使用 `search_pacvue_docs` 工具**来获取信息。
+
+## Response Style
+
+- 风格：简洁、专业。
+- 格式：如果是组件文档，请使用 Markdown 表格展示 Props，并提供代码示例。
+```
