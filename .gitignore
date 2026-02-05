@@ -61,5 +61,4 @@ htmlcov/
 # Cookie/Session 文件
 cookie.json
 
-docs/
 .cursor/
