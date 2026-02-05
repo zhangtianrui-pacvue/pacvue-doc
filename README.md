@@ -99,9 +99,19 @@ AI 助手会自动调用 `search_pacvue_docs` 工具搜索文档并返回结果�
 
 ## 添加文档
 
-### 本地文档
+### 组件文档
 
-将 Markdown 文件放入 `docs/` 目录，重启服务后自动加载。
+从 Pacvue 组件库生成文档：
+
+1. 克隆组件库代码：
+
+```bash
+git clone https://github.com/Pacvue/elementPlus-vue3.git
+```
+
+2. 使用 AI 工具（如 Cursor）基于源码生成 Markdown 文档
+
+3. 将生成的 Markdown 文件放入 `docs/` 目录，重启服务后自动加载
 
 ### Confluence 文档
 
