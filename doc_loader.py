@@ -550,7 +550,7 @@ def get_doc_loader(docs_dir: str = "./docs") -> DocLoader:
 
 
 def init_with_confluence(
-    page_ids: List[str],
+    folder_ids: List[str],
     confluence_base_url: str = "https://pacvue-enterprise.atlassian.net",
     docs_dir: str = "./docs"
 ) -> DocLoader:
@@ -560,10 +560,10 @@ def init_with_confluence(
     这是完整初始化的入口函数，会：
     1. 创建/获取 DocLoader 单例
     2. 加载本地 Markdown 文档（如果向量存储不存在）
-    3. 加载并添加 Confluence 文档
+    3. 加载并添加多个 Confluence 文件夹下的文档
     
     Args:
-        page_ids: 要加载的 Confluence 页面 ID 列表
+        folder_ids: 要加载的 Confluence 文件夹 ID 列表
         confluence_base_url: Confluence 实例的基础 URL
         docs_dir: 本地文档目录路径
         
@@ -589,8 +589,20 @@ def init_with_confluence(
         
         print("\n正在加载 Confluence 文档...")
         confluence_loader = ConfluenceLoader(base_url=confluence_base_url)
-        page_ids = confluence_loader.get_folder_docs_ids(folder_id="2196631")
-        confluence_docs = confluence_loader.load_by_page_ids(page_ids)
+        
+        # 遍历所有文件夹，收集页面 ID
+        all_page_ids = []
+        for folder_id in folder_ids:
+            print(f"[信息] 正在获取文件夹 {folder_id} 下的文档...")
+            page_ids = confluence_loader.get_folder_docs_ids(folder_id=folder_id)
+            all_page_ids.extend(page_ids)
+            print(f"[信息] 文件夹 {folder_id} 包含 {len(page_ids)} 个页面")
+        
+        # 去重
+        all_page_ids = list(set(all_page_ids))
+        print(f"[信息] 共获取 {len(all_page_ids)} 个唯一页面")
+        
+        confluence_docs = confluence_loader.load_by_page_ids(all_page_ids)
         
         if confluence_docs:
             loader.add_confluence_docs(confluence_docs)
