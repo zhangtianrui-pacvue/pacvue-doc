@@ -68,17 +68,17 @@ uvicorn index:app --reload
 打开 Cursor 设置，添加 MCP Server 配置：
 
 ```json
-{
-  "mcpServers": {
-    "pacvue-doc-helper": {
-      "command": "python",
-      "args": ["<你的项目路径>/server.py"]
-    }
-  }
+"Pacvue Doc Helper": {
+  "name": "Pacvue Doc Helper",
+  "type": "stdio",
+  "command": "<你的虚拟环境路径>/python.exe <你的项目路径>/server.py"
 }
 ```
 
-> 将 `<你的项目路径>` 替换为本项目的实际路径，例如 `D:/projects/pacvue-doc`
+> 将路径替换为实际值，例如：
+>
+> - 虚拟环境路径：`D:\projects\pacvue-doc\.venv\Scripts`
+> - 项目路径：`D:\projects\pacvue-doc`
 
 ### 步骤 3：使用
 
