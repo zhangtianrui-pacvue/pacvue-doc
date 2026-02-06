@@ -19,6 +19,7 @@ import os
 import re
 import shutil
 import hashlib
+from datetime import datetime, timezone
 from typing import List, Optional, Set, Tuple
 from pathlib import Path
 
@@ -549,10 +550,79 @@ def get_doc_loader(docs_dir: str = "./docs") -> DocLoader:
     return _doc_loader
 
 
+def _get_meta_collection(persist_directory: str = "./chroma_db"):
+    """
+    获取 ChromaDB 中的 pacvue_meta collection，用于存储元数据（如上次更新时间）
+    
+    Args:
+        persist_directory: ChromaDB 持久化目录
+        
+    Returns:
+        ChromaDB collection 实例，如果获取失败则返回 None
+    """
+    try:
+        import chromadb
+        client = chromadb.PersistentClient(path=persist_directory)
+        return client.get_or_create_collection(name="pacvue_meta")
+    except Exception as e:
+        print(f"[错误] 获取 meta collection 失败: {e}")
+        return None
+
+
+def get_last_confluence_update(persist_directory: str = "./chroma_db") -> Optional[datetime]:
+    """
+    从 ChromaDB meta collection 中读取上次 Confluence 更新时间
+    
+    Args:
+        persist_directory: ChromaDB 持久化目录
+        
+    Returns:
+        上次更新的 datetime（UTC），如果从未更新过则返回 None
+    """
+    meta = _get_meta_collection(persist_directory)
+    if meta is None:
+        return None
+    
+    try:
+        result = meta.get(ids=["last_confluence_update"])
+        if result and result["documents"] and result["documents"][0]:
+            timestamp_str = result["documents"][0]
+            return datetime.fromisoformat(timestamp_str)
+    except Exception as e:
+        print(f"[警告] 读取上次更新时间失败: {e}")
+    
+    return None
+
+
+def set_last_confluence_update(persist_directory: str = "./chroma_db") -> None:
+    """
+    将当前时间写入 ChromaDB meta collection，标记 Confluence 更新时间
+    
+    Args:
+        persist_directory: ChromaDB 持久化目录
+    """
+    meta = _get_meta_collection(persist_directory)
+    if meta is None:
+        return
+    
+    now_str = datetime.now(timezone.utc).isoformat()
+    
+    try:
+        # upsert：如果 ID 存在则更新，不存在则插入
+        meta.upsert(
+            ids=["last_confluence_update"],
+            documents=[now_str]
+        )
+        print(f"[OK] 已记录 Confluence 更新时间: {now_str}")
+    except Exception as e:
+        print(f"[错误] 写入更新时间失败: {e}")
+
+
 def init_with_confluence(
     folder_ids: List[str],
     confluence_base_url: str = "https://pacvue-enterprise.atlassian.net",
-    docs_dir: str = "./docs"
+    docs_dir: str = "./docs",
+    force: bool = False
 ) -> DocLoader:
     """
     初始化文档加载器并加载 Confluence 文档
@@ -561,11 +631,13 @@ def init_with_confluence(
     1. 创建/获取 DocLoader 单例
     2. 加载本地 Markdown 文档（如果向量存储不存在）
     3. 加载并添加多个 Confluence 文件夹下的文档
+    4. 成功后记录更新时间戳到 ChromaDB meta collection
     
     Args:
         folder_ids: 要加载的 Confluence 文件夹 ID 列表
         confluence_base_url: Confluence 实例的基础 URL
         docs_dir: 本地文档目录路径
+        force: 是否强制重新加载（忽略 _confluence_initialized 标志）
         
     Returns:
         初始化完成的 DocLoader 实例
@@ -578,8 +650,8 @@ def init_with_confluence(
     # 确保向量存储已创建
     loader.get_or_create_vector_store()
     
-    # 避免重复加载 Confluence 文档
-    if _confluence_initialized:
+    # 避免重复加载 Confluence 文档（force=True 时跳过此检查）
+    if _confluence_initialized and not force:
         print("[信息] Confluence 文档已加载，跳过")
         return loader
     
@@ -607,6 +679,8 @@ def init_with_confluence(
         if confluence_docs:
             loader.add_confluence_docs(confluence_docs)
             _confluence_initialized = True
+            # 记录本次更新时间到 ChromaDB
+            set_last_confluence_update(loader.persist_directory)
             print(f"[OK] 已加载 {len(confluence_docs)} 个 Confluence 页面")
         else:
             print("[警告] 未能加载任何 Confluence 文档")

@@ -39,6 +39,7 @@ ENV/
 # ChromaDB 向量数据库
 chroma_db/
 
+
 # Logs
 *.log
 logs/
@@ -62,3 +63,4 @@ htmlcov/
 cookie.json
 
 .cursor/
+.agents/
