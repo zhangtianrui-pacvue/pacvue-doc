@@ -17,7 +17,11 @@ import threading
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
-from doc_loader import get_doc_loader, init_with_confluence, get_last_confluence_update
+from runtime.doc_service import (
+    get_doc_loader,
+    init_with_confluence,
+    get_last_confluence_update,
+)
 from constant import confluence_folder_ids
 
 # FastAPI 相关
