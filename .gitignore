@@ -38,7 +38,8 @@ ENV/
 
 # ChromaDB 向量数据库
 chroma_db/
-
+repo_cache/
+docs/
 
 # Logs
 *.log

@@ -22,6 +22,11 @@ from runtime.doc_service import (
     init_with_confluence,
     get_last_confluence_update,
 )
+from runtime.repo_sync_service import (
+    RepoSyncService,
+    get_last_repo_sync_time,
+)
+from runtime.settings import REMOTE_REPO_SYNC_DAYS
 from constant import confluence_folder_ids
 
 # FastAPI 相关
@@ -56,6 +61,24 @@ def _do_confluence_update(force=False):
         print("[OK] Confluence 文档更新完成")
     except Exception as e:
         print(f"[错误] Confluence 文档更新失败: {e}")
+
+
+def _do_repo_sync(force=False):
+    """
+    执行远程仓库同步并生成 docs 下文档，随后增量入库。
+    """
+    try:
+        loader = get_doc_loader(docs_dir=DOCS_DIR)
+        service = RepoSyncService(doc_loader=loader)
+        result = service.run(force=force)
+        if result.get("status") == "ok":
+            print("[OK] 远程仓库同步完成")
+        else:
+            print(f"[信息] 远程仓库同步跳过: {result.get('reason')}")
+        return result
+    except Exception as e:
+        print(f"[错误] 远程仓库同步失败: {e}")
+        return {"status": "error", "error": str(e)}
 
 
 def _key_listener():
@@ -101,6 +124,7 @@ async def startup_event():
     
     - 始终加载本地 Markdown 文档和已有向量存储
     - 检查距上次 Confluence 更新是否超过 7 天，超过则自动更新
+    - 检查远程仓库是否到达同步周期，满足则同步并生成 docs 文档
     - 启动后台线程监听按 r 键手动触发更新
     """
     print("\n" + "=" * 60)
@@ -131,6 +155,23 @@ async def startup_event():
             else:
                 remaining = CONFLUENCE_UPDATE_INTERVAL_DAYS - days_since
                 print(f"[信息] Confluence 文档仍在有效期内，{remaining} 天后自动更新")
+
+        # 检查远程仓库是否需要同步
+        last_repo_sync = get_last_repo_sync_time(CHROMA_DIR)
+        if last_repo_sync is None:
+            print("[信息] 从未同步过远程组件仓库，正在执行首次同步...")
+            _do_repo_sync()
+        else:
+            now = datetime.now(timezone.utc)
+            repo_days_since = (now - last_repo_sync).days
+            print(f"[信息] 上次远程仓库同步时间: {last_repo_sync.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+            print(f"[信息] 距今 {repo_days_since} 天")
+            if repo_days_since >= REMOTE_REPO_SYNC_DAYS:
+                print(f"[信息] 超过 {REMOTE_REPO_SYNC_DAYS} 天未更新，正在同步远程仓库并生成文档...")
+                _do_repo_sync()
+            else:
+                repo_remaining = REMOTE_REPO_SYNC_DAYS - repo_days_since
+                print(f"[信息] 远程仓库仍在有效期内，{repo_remaining} 天后自动更新")
                 
     except Exception as e:
         print(f"[警告] 文档加载器初始化时出现问题: {e}")
@@ -153,6 +194,11 @@ async def startup_event():
 
 class ChatRequest(BaseModel):
     query: str
+
+
+class RepoSyncRequest(BaseModel):
+    force: bool = True
+
 
 # 不创建agent 
 @app.post("/chat_no_agent")
@@ -185,3 +231,8 @@ def chat_no_agent_api(req: ChatRequest):
         "results": results,
         "citations": citations
     }
+
+
+@app.post("/admin/repo-sync")
+def admin_repo_sync(req: RepoSyncRequest):
+    return _do_repo_sync(force=req.force)

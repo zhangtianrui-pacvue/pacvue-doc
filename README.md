@@ -6,14 +6,29 @@ Pacvue 内部文档搜索 MCP Server，支持本地 Markdown 文档和 Confluenc
 
 ```
 pacvue-doc/
-├── server.py          # MCP Server 入口
-├── index.py           # FastAPI 文档搜索服务（后端）
-├── doc_loader.py      # 文档加载和向量搜索核心
-├── confluence_get.py  # Confluence 文档获取
-├── constant.py        # 常量配置（Confluence 文件夹 ID）
-├── requirements.txt   # Python 依赖
-├── .env.example       # 环境变量模板
-└── docs/              # 本地 Markdown 文档目录
+├── server.py                 # MCP Server 入口
+├── index.py                  # FastAPI 文档搜索服务（后端）
+├── constant.py               # 常量配置（Confluence 文件夹 ID）
+├── requirements.txt          # Python 依赖
+├── .env.example              # 环境变量模板
+├── connectors/               # 外部数据源连接层
+│   └── confluence_client.py
+├── ingest/                   # 文档扫描与清单管理
+│   ├── scanner.py
+│   ├── identity.py
+│   └── manifest_store.py
+├── retrieve/                 # 检索与切分逻辑
+│   ├── search_service.py
+│   └── splitter.py
+├── indexing/                 # 向量索引与写入逻辑
+│   ├── chroma_store.py
+│   └── metadata_schema.py
+├── runtime/                  # 运行时配置与服务组装
+│   ├── settings.py
+│   └── doc_service.py
+├── docs/                     # 本地 Markdown 文档目录
+├── repo_cache/               # 远程仓库本地镜像（自动同步）
+└── chroma_db/                # Chroma 持久化数据
 ```
 
 ## 安装
@@ -101,17 +116,32 @@ AI 助手会自动调用 `search_pacvue_docs` 工具搜索文档并返回结果�
 
 ### 组件文档
 
-从 Pacvue 组件库生成文档：
+系统支持从远程仓库自动同步并生成 Markdown 到 `docs/remote_repo/`。
 
-1. 克隆组件库代码：
+默认配置（见 `runtime/settings.py`）：
+
+- `REMOTE_REPO_URL = "https://github.com/Pacvue/elementPlus-vue3.git"`
+- `REMOTE_REPO_LOCAL_PATH = "./repo_cache/elementPlus-vue3"`
+- `REMOTE_REPO_SYNC_DAYS = 7`
+
+自动同步行为：
+
+- 服务启动时检查上次同步时间。
+- 超过 7 天自动执行：`git pull/clone -> 源码抽取 -> docs 生成 -> 增量入库`。
+
+手动同步方式（推荐）：
 
 ```bash
-git clone https://github.com/Pacvue/elementPlus-vue3.git
+curl -X POST http://127.0.0.1:8000/admin/repo-sync ^
+  -H "Content-Type: application/json" ^
+  -d "{\"force\": true}"
 ```
 
-2. 使用 AI 工具（如 Cursor）基于源码生成 Markdown 文档
+返回结果包含：
 
-3. 将生成的 Markdown 文件放入 `docs/` 目录，重启服务后自动加载
+- `sync`：远程仓库同步结果（old/new commit）
+- `generation`：本次生成的 Markdown 文件数量与路径
+- `ingest_summary`：入库统计（added/updated/skipped/deleted）
 
 ### Confluence 文档
 
