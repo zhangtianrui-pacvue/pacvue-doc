@@ -57,7 +57,7 @@ copy .env.example .env
 编辑 `.env` 文件，填入实际的配置值：
 
 ```ini
-CONFLUENCE_BASE_URL=https://pacvue-enterprise.atlassian.net/
+CONFLUENCE_BASE_URL=https://id.atlassian.com/manage-profile/security/api-tokens
 CONFLUENCE_EMAIL=你的邮箱
 CONFLUENCE_API_TOKEN=你的API Token
 ```
