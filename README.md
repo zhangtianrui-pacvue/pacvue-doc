@@ -129,14 +129,6 @@ AI 助手会自动调用 `search_pacvue_docs` 工具搜索文档并返回结果�
 - 服务启动时检查上次同步时间。
 - 超过 7 天自动执行：`git pull/clone -> 源码抽取 -> docs 生成 -> 增量入库`。
 
-手动同步方式：
-
-```bash
-curl -X POST http://127.0.0.1:8000/admin/repo-sync ^
-  -H "Content-Type: application/json" ^
-  -d "{\"force\": true}"
-```
-
 返回结果包含：
 
 - `sync`：远程仓库同步结果（old/new commit）
