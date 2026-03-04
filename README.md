@@ -40,6 +40,7 @@ pacvue-doc/
 ```bash
 python -m venv venv
 venv\Scripts\activate  # Windows
+source venv/bin/activate # macOS / Linux
 ```
 
 ### 2. 安装依赖
@@ -51,9 +52,9 @@ pip install -r requirements.txt
 ### 3. 配置环境变量
 
 复制环境变量模板文件：
-
 ```bash
-copy .env.example .env
+copy .env.example .env  # Windows
+cp .env.example .env  #macOS / Linux
 ```
 
 编辑 `.env` 文件，填入实际的配置值：
@@ -103,6 +104,7 @@ python run.py
 >
 > - 虚拟环境路径：`D:\projects\pacvue-doc\.venv\Scripts`
 > - 项目路径：`D:\projects\pacvue-doc`
+> - MacOS/Linux 注意替换
 
 然后在 Cursor 中添加以下 Skill，可以让 AI 助手更智能地调用文档搜索：
 
