@@ -8,11 +8,13 @@ Pacvue 内部文档搜索 MCP Server，支持本地 Markdown 文档和 Confluenc
 pacvue-doc/
 ├── server.py                 # MCP Server 入口
 ├── index.py                  # FastAPI 文档搜索服务（后端）
+├── run.py                    # 本地开发启动入口（已内置 reload 目录）
 ├── constant.py               # 常量配置（Confluence 文件夹 ID）
 ├── requirements.txt          # Python 依赖
 ├── .env.example              # 环境变量模板
 ├── connectors/               # 外部数据源连接层
-│   └── confluence_client.py
+│   ├── confluence_client.py
+│   └── repo_sync.py          # 远程仓库同步（含 Windows longpaths、锁机制）
 ├── ingest/                   # 文档扫描与清单管理
 │   ├── scanner.py
 │   ├── identity.py
@@ -73,8 +75,15 @@ CONFLUENCE_API_TOKEN=你的API Token
 MCP Server 依赖 FastAPI 后端服务，需先启动：
 
 ```bash
-uvicorn index:app --reload
+python run.py
 ```
+
+`run.py` 内置等价配置：
+
+- `reload=True`
+- `reload_dirs=["connectors", "runtime", "retrieve", "ingest", "indexing"]`
+
+这样可以避免监听 `repo_cache/`，防止仓库同步时触发热重载。
 
 服务启动后运行在 `http://127.0.0.1:8000`
 
@@ -157,13 +166,28 @@ AI 助手会自动调用 `search_pacvue_docs` 工具搜索文档并返回结果�
 自动同步行为：
 
 - 服务启动时检查上次同步时间。
-- 超过 7 天自动执行：`git pull/clone -> 源码抽取 -> docs 生成 -> 增量入库`。
+- 超过 7 天自动在后台线程执行：`git pull/clone -> 源码抽取 -> docs 生成 -> 增量入库`。
+- 首次同步会在后台执行，不阻塞应用启动。
+- 同步过程使用 `repo_cache/.repo_sync.lock` 防止并发同步。
+- Windows 下 clone 使用 `git -c core.longpaths=true`，并自动尝试修复 partial checkout。
 
 返回结果包含：
 
 - `sync`：远程仓库同步结果（old/new commit）
 - `generation`：本次生成的 Markdown 文件数量与路径
 - `ingest_summary`：入库统计（added/updated/skipped/deleted）
+
+手动强制同步（忽略周期和 commit 变化）：
+
+```bash
+curl -X POST http://127.0.0.1:8000/admin/repo-sync -H "Content-Type: application/json" -d "{\"force\": true}"
+```
+
+如果遇到锁超时（例如进程异常退出遗留锁文件）：
+
+```bash
+del repo_cache\.repo_sync.lock
+```
 
 ### Confluence 文档
 

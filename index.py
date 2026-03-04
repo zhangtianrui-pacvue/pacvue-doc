@@ -156,19 +156,26 @@ async def startup_event():
                 remaining = CONFLUENCE_UPDATE_INTERVAL_DAYS - days_since
                 print(f"[信息] Confluence 文档仍在有效期内，{remaining} 天后自动更新")
 
-        # 检查远程仓库是否需要同步
+        # 检查远程仓库是否需要同步（在后台线程中执行，避免 uvicorn --reload 重载时
+        # cancel asyncio startup event 导致 git clone 中途失败）
         last_repo_sync = get_last_repo_sync_time(CHROMA_DIR)
         if last_repo_sync is None:
-            print("[信息] 从未同步过远程组件仓库，正在执行首次同步...")
-            _do_repo_sync()
+            print("[信息] 从未同步过远程组件仓库，将在后台执行首次同步...")
+            repo_sync_thread = threading.Thread(
+                target=_do_repo_sync, daemon=True
+            )
+            repo_sync_thread.start()
         else:
             now = datetime.now(timezone.utc)
             repo_days_since = (now - last_repo_sync).days
             print(f"[信息] 上次远程仓库同步时间: {last_repo_sync.strftime('%Y-%m-%d %H:%M:%S UTC')}")
             print(f"[信息] 距今 {repo_days_since} 天")
             if repo_days_since >= REMOTE_REPO_SYNC_DAYS:
-                print(f"[信息] 超过 {REMOTE_REPO_SYNC_DAYS} 天未更新，正在同步远程仓库并生成文档...")
-                _do_repo_sync()
+                print(f"[信息] 超过 {REMOTE_REPO_SYNC_DAYS} 天未更新，将在后台同步远程仓库...")
+                repo_sync_thread = threading.Thread(
+                    target=_do_repo_sync, daemon=True
+                )
+                repo_sync_thread.start()
             else:
                 repo_remaining = REMOTE_REPO_SYNC_DAYS - repo_days_since
                 print(f"[信息] 远程仓库仍在有效期内，{repo_remaining} 天后自动更新")
