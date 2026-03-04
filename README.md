@@ -131,7 +131,7 @@ description: 当用户询问 Pacvue 内部前端组件、规范或 Confluence �
 
 > 使用前请先输入：`/pacvue-doc`
 
-![Cursor 使用示例](images/Screenshot.png)
+![Cursor 使用示例](./images/Screenshot.png)
 
 AI 助手会自动调用 `search_pacvue_docs` 工具搜索文档并返回结果。
 
